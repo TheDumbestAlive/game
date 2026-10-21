@@ -36,6 +36,7 @@ let imgAssets = {};
 
 let charts = {
     chug: {
+        song: 'Chug.mp3',
         img: 'Khan.png',
         //Length in seconds
         len: 32,
@@ -48,6 +49,7 @@ let charts = {
         ],
     },
     test2: {
+        song: 'Chug.mp3',
         img: 'Khan.png',
         len: 32,
         lanes: 4,
@@ -59,6 +61,7 @@ let charts = {
         ],
     },
     test3: {
+        song: 'Chug.mp3',
         img: 'Khan.png',
         len: 32,
         lanes: 4,
@@ -70,6 +73,7 @@ let charts = {
         ],
     },
     test4: {
+        song: 'Chug.mp3',
         img: 'Khan.png',
         len: 32,
         lanes: 4,
@@ -129,10 +133,32 @@ const gameCtx = {
 
 };
 
+const originalRes = {
+    w: 1920,
+    h: 945
+};
+
+const currRes = {
+    w: null,
+    h: null
+};
+
+function fX (x) {
+    return map(x, 0, originalRes.w, 0, currRes.w);
+}
+
+function fY (y) {
+    return map(y, 0, originalRes.h, 0, currRes.h);
+}
+
 //SETUP
-//==============================================
+//#region
 async function setup() {
     createCanvas(window.innerWidth, window.innerHeight);
+
+    currRes.w = width;
+    currRes.h = height;
+
     background(0, 0, 0);
     gameCtx.vanish.originX = width / 2;
     gameCtx.vanish.originY = -50;
@@ -144,8 +170,7 @@ async function setup() {
 
     textFont('monospace')
 
-    frameRate(menuCtx.targetFps);
-
+    frameRate(menuCtx.targetFps)
     for(let i = 0; i < imgs.length; i++) {
         imgAssets[imgs[i]] = await loadImage(imgs[i]);
     }
@@ -188,7 +213,7 @@ function timeStamp (s) {
     }
     return mins + ':' + seconds;
 }
-
+//#endregion
 //Menu code
 function drawTitleCard (x, y, s, img, title, subtext, subtext2,) {
     rectMode(CENTER)
@@ -245,20 +270,18 @@ function menu () {
             noStroke();
             fill(255, 255, 255, 2)
             for(let k = 325; k > 0; k--) {
-                ellipse(375, (i - menuCtx.songSelect + 1) * 320 + 100 + menuCtx.titleCardOffset, 325 - k, 325 - k)
+                ellipse(fX(375), fY((i - menuCtx.songSelect + 1) * 320 + 100 + menuCtx.titleCardOffset), fX(325 - k), fX(325 - k))
             }
-            drawTitleCard(375, (i - menuCtx.songSelect + 1) * 320 + 100 + menuCtx.titleCardOffset, 2.25, currImg, chartName, timeStamp(currChart.len), `${currChart.noteCount} notes`)
+            drawTitleCard(fX(375), fY((i - menuCtx.songSelect + 1) * 320 + 100 + menuCtx.titleCardOffset), fX(2.25), currImg, chartName, timeStamp(currChart.len), `${currChart.noteCount} notes`)
         }
         else {
-            drawTitleCard(150, (i - menuCtx.songSelect + 1) * 320 + 100 + menuCtx.titleCardOffset, 1.5, currImg, chartName, '', '')
+            drawTitleCard(fX(150), fY((i - menuCtx.songSelect + 1) * 320 + 100 + menuCtx.titleCardOffset), fX(1.5), currImg, chartName, '', '')
         }
     }
     let chartName = allCharts[menuCtx.songSelect];
-        let currChart = charts[allCharts[menuCtx.songSelect]];
-        let currImg = imgAssets[currChart.img];
-    drawTitleCard(width * 0.75, 330, 4.5, currImg, chartName, timeStamp(currChart.len), `${currChart.noteCount} notes`)
-
-    //drawStats();
+    let currChart = charts[allCharts[menuCtx.songSelect]];
+    let currImg = imgAssets[currChart.img];
+    drawTitleCard(width * 0.75, fY(330), fX(4.5), currImg, chartName, timeStamp(currChart.len), `${currChart.noteCount} notes`)
 }
 
 //Game code
@@ -291,8 +314,9 @@ function drawLane (x1, x2, y, notes) {
     let b2 = y - x2 * m2;
 
     //x = y / m - b
-    fill(0, 255, 255)
+    
     for(let i = 0; i < notes.length; i++) {
+        fill(0, 255, 255)
         let yPos = height - (notes[i] - audioContext.currentTime) * gameCtx.scrollSpeed * menuCtx.targetFps;
         
         let topLeftX = (yPos - b1) / m1;
@@ -483,13 +507,37 @@ function keyPressed () {
                 });
             }
         }
+        if(key === 'Enter') {
+            menuCtx.interactable = false;
+            AnimationLoop.vars.bgFade = 0;
+            AnimationLoop.createAnimation (() => {
+                fill(255, 255, 255, AnimationLoop.vars.bgFade)
+                rectMode(CORNER)
+                rect(0, 0, width, height)
+                AnimationLoop.vars.bgFade += 2;
+            }, () => {
+                if(AnimationLoop.vars.bgFade >= 255) {
+                    loadGameChart(allCharts[menuCtx.songSelect])
+                    screen = 'game';
+                    AnimationLoop.createAnimation(() => {
+                        fill(255, 255, 255, AnimationLoop.vars.bgFade)
+                        rectMode(CORNER)
+                        rect(0, 0, width, height)
+                        AnimationLoop.vars.bgFade -= 3;
+                    }, () => {
+                        if(AnimationLoop.vars.bgFade <= 0) {
+                            audioContext.resume();
+                        }
+                    });
+                    
+                    return true;
+                }
+            });
+        }
     }
 }
 
 function mouseClicked () {
-    if(audioContext.state === 'suspended') {
-        audioContext.resume();
-    }
 }
 
 function draw () {
