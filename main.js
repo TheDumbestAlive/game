@@ -1,3 +1,4 @@
+//Note to self: Add another note hit effect, and *then* you can work on adding more songs. Commit to main after you add effects
 const audioContext = new AudioContext();
 
 const AnimationLoop = {
@@ -33,6 +34,8 @@ let screen = 'menu';
 let imgs = ['Khan.png'];
 
 let imgAssets = {};
+
+let songAssets = {};
 
 let charts = {
     chug: {
@@ -108,6 +111,8 @@ const menuCtx = {
 };
 
 const gameCtx = {
+    songDelay: 2,
+
     ctxOffset: 0,
 
     vanish: {
@@ -153,6 +158,29 @@ function fY (y) {
 
 //SETUP
 //#region
+
+function loadAudio (src, verbose) {
+    return new Promise((res, rej) => {
+        if(verbose) {
+            console.log('Attempting to load audio file ' + src)
+            console.time('Loading')
+        }
+        try {
+            const audio = new Audio(src)
+            audio.addEventListener('loadedmetadata', () => {
+                if(verbose) {
+                    console.log('Successfully loaded ' + src)
+                    console.timeEnd('Loading')
+                }
+                res(audio)
+            })
+        }
+        catch(err) {
+            rej(err)
+        }
+    });
+}
+
 async function setup() {
     createCanvas(window.innerWidth, window.innerHeight);
 
@@ -174,16 +202,24 @@ async function setup() {
     for(let i = 0; i < imgs.length; i++) {
         imgAssets[imgs[i]] = await loadImage(imgs[i]);
     }
+    for(let i in charts) {
+        if(!songAssets[charts[i].song]) {
+            songAssets[charts[i].song] = await loadAudio(charts[i].song, true)
+        }
+        
+        charts[i].len = round(songAssets[charts[i].song].duration);
+    }
 }
 
 function loadGameChart (name) {
     if(!allCharts.includes(name)) {
         return;
     }
-    
+
     gameCtx.chart = structuredClone(charts[name])
     gameCtx.keybinds = menuCtx.keybinds[gameCtx.chart.lanes]
     gameCtx.ctxOffset = audioContext.currentTime;
+    gameCtx.song = gameCtx.chart.song;
 }
 
 function gradient (c1, c2, x, y, w, h) {
@@ -286,6 +322,9 @@ function menu () {
 
 //Game code
 //#region
+function calcDiff (noteTime) {
+    return noteTime - (audioContext.currentTime - gameCtx.ctxOffset - gameCtx.songDelay)
+}
 
 function calcGrade (diff) {
     const error = Math.abs(diff);
@@ -317,7 +356,7 @@ function drawLane (x1, x2, y, notes) {
     
     for(let i = 0; i < notes.length; i++) {
         fill(0, 255, 255)
-        let yPos = height - (notes[i] - audioContext.currentTime) * gameCtx.scrollSpeed * menuCtx.targetFps;
+        let yPos = height - (calcDiff(notes[i])) * gameCtx.scrollSpeed * menuCtx.targetFps;
         
         let topLeftX = (yPos - b1) / m1;
         let topRightX = (yPos - b2) / m2;
@@ -406,7 +445,7 @@ function game () {
     stroke(0, 0, 0)
 
     for(let i = 0; i < gameCtx.chart.notes.length; i++) {
-        while(gameCtx.chart.notes[i][0] - audioContext.currentTime < -0.1) {
+        while(calcDiff(gameCtx.chart.notes[i][0]) < -0.1) {
             gameCtx.chart.notes[i].shift();
             AnimationLoop.vars['miss'] = 255;
             AnimationLoop.createAnimation(() => {
@@ -439,10 +478,35 @@ function keyPressed () {
             let clr = [255, 255, 255]
             //Hit animation and score calc
             AnimationLoop.vars['effectTimer' + lane] = 150;
-            if(height - (gameCtx.chart.notes[lane][0] - audioContext.currentTime) * gameCtx.scrollSpeed * menuCtx.targetFps > 0) {
+            if(height - (calcDiff(gameCtx.chart.notes[lane][0])) * gameCtx.scrollSpeed * menuCtx.targetFps > 0) {
                 clr = [255, 215, 0]
                 
-                let hit = calcGrade(gameCtx.chart.notes[lane][0] - audioContext.currentTime);
+                let hit = calcGrade(calcDiff(gameCtx.chart.notes[lane][0]));
+                if(hit[0] >= 500) {
+                    AnimationLoop.vars[lane + 'particleTimer' + hit[1]] = 255;
+                    AnimationLoop.vars[lane + 'particles' + hit[1]] = [];
+                    for(let i = 0; i < 40; i++) {
+                        let angle = random(0, 360)
+                        AnimationLoop.vars[lane + 'particles' + hit[1]][i] = [cos(angle), sin(angle), random(5, 15)]
+                    }
+                    AnimationLoop.createAnimation (
+                        () => {
+                            let timer = AnimationLoop.vars[lane + 'particleTimer' + hit[1]];
+                            fill(255, 255, 0, timer)
+                            noStroke();
+                            for(let i = 0; i < AnimationLoop.vars[lane + 'particles' + hit[1]].length; i++) {
+                                let prtcl = AnimationLoop.vars[lane + 'particles' + hit[1]][i];
+                                ellipse(lane * gameCtx.laneW  + gameCtx.laneW / 2 + (prtcl[0] * (255 - timer)), height + (prtcl[1] * (255 - timer)), prtcl[2], prtcl[2])
+                                ellipse(lane * gameCtx.laneW  + gameCtx.laneW / 2 + (prtcl[0] * (255 - timer)) + 10, height + (prtcl[1] * (255 - timer)) - 10, prtcl[2], prtcl[2])
+                                ellipse(lane * gameCtx.laneW  + gameCtx.laneW / 2 + (prtcl[0] * (255 - timer)) - 10, height + (prtcl[1] * (255 - timer)) - 10, prtcl[2], prtcl[2])
+                            }
+                            AnimationLoop.vars[lane + 'particleTimer' + hit[1]] -= 5;
+                        },
+                        () => {
+                            return AnimationLoop.vars[lane + 'particleTimer' + hit[1]] <= 0;
+                        }
+                    );
+                }
                 gameCtx.score += Math.round(hit[0]);
                 AnimationLoop.vars['effectTimer' + hit[1]] = 255;
                 AnimationLoop.createAnimation(() => {
@@ -527,6 +591,14 @@ function keyPressed () {
                     }, () => {
                         if(AnimationLoop.vars.bgFade <= 0) {
                             audioContext.resume();
+                            AnimationLoop.createAnimation (() => {}, () => {
+                                if(audioContext.currentTime - gameCtx.ctxOffset >= gameCtx.songDelay) {
+                                    songAssets[gameCtx.song].loop = false;
+                                    songAssets[gameCtx.song].play();
+                                    return true;
+                                }
+                            });
+                            return true;
                         }
                     });
                     
