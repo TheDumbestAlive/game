@@ -220,6 +220,7 @@ function loadGameChart (name) {
     gameCtx.keybinds = menuCtx.keybinds[gameCtx.chart.lanes]
     gameCtx.ctxOffset = audioContext.currentTime;
     gameCtx.song = gameCtx.chart.song;
+    gameCtx.duration = gameCtx.chart.len;
 }
 
 function gradient (c1, c2, x, y, w, h) {
@@ -238,7 +239,7 @@ function drawStats () {
     textAlign(LEFT)
     textSize(20);
     text(`Framerate: ${Math.round(frameRate())}fps`, 10, 30)
-    text(`Time: ${Math.trunc(audioContext.currentTime * 100) / 100}s`, 10, 60)
+    text(`Time: ${Math.trunc((audioContext.currentTime - gameCtx.ctxOffset) * 100) / 100}s`, 10, 60)
 }
 
 function timeStamp (s) {
@@ -427,6 +428,33 @@ function toggleVanish (speed) {
     }
 }
 
+function endGame () {
+    AnimationLoop.vars.endBgFade = 0;
+    AnimationLoop.createAnimation (
+        () => {
+            AnimationLoop.vars.endBgFade += 2;
+            fill(255, 255, 255, AnimationLoop.vars.endBgFade)
+            rect(0, 0, width, height)
+        },
+        () => {
+            if(AnimationLoop.vars.endBgFade >= 255) {
+                screen = 'endScreen'
+                AnimationLoop.createAnimation (
+                    () => {
+                        AnimationLoop.vars.endBgFade -= 2;
+                        fill(255, 255, 255, AnimationLoop.vars.endBgFade)
+                        rect(0, 0, width, height)
+                    },
+                    () => {
+                        return AnimationLoop.vars.endBgFade <= 0
+                    }
+                )
+                return true
+            }
+        }
+    )
+}
+
 //loadGameChart('test')
 
 function game () {
@@ -465,11 +493,26 @@ function game () {
     drawLanes();
     fill(255, 255, 255)
     drawStats();
+    if(gameCtx.duration + 2 < audioContext.currentTime - gameCtx.ctxOffset && audioContext.state === 'running') {
+        audioContext.suspend();
+        endGame();
+    } 
 }
 //#endregion
 
+//End Screen code
+function endScreen () {
+    background(0, 0, 0)
+    fill(255, 255, 255)
+    drawStats();
+    textSize(40)
+    textAlign(CENTER)
+    text('You did it. ESCAPE to exit.', width / 2, height / 2)
+}
+
 screens.menu = menu;
 screens.game = game;
+screens.endScreen = endScreen;
 
 function keyPressed () {
     if(screen === 'game') {
@@ -605,6 +648,13 @@ function keyPressed () {
                     return true;
                 }
             });
+        }
+    }
+
+    if(screen === 'endScreen') {
+        if(key === 'Escape') {
+            screen = 'menu'
+            menuCtx.interactable = true;
         }
     }
 }
